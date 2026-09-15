@@ -164,7 +164,7 @@ export function render(state, root) {
 
   const AI_HINTS = {
     opencode: "opencode: no API key needed. Talks to your local `opencode serve` (default http://localhost:4096) and uses the model/tools opencode is configured with. Leave Key blank; model blank = opencode's default.",
-    local: "Local Ollama: runs entirely on this machine. Needs the Ollama app running (`ollama serve`) with a model pulled — this app defaults to gemma4:e2b and falls back to gemma2 if missing. No key needed. The assistant also gets server-side tools to read your courses/tasks and mark work done.",
+    local: "Local Ollama: runs entirely on this machine. Needs the Ollama app running (`ollama serve`). Model is auto-detected from what you've pulled — leave the Model field blank. No key needed. The assistant also gets server-side tools to read your courses/tasks and mark work done.",
     gemini: "Google Gemini: uses Google's OpenAI-compatible endpoint. Get a free API key at Google AI Studio (aistudio.google.com) and paste it below.",
     openai: "OpenAI-compatible: works with OpenAI, Azure OpenAI, Groq, Together, LocalAI… Endpoint points at /v1/chat/completions.",
     openrouter: "OpenRouter: one key, dozens of models (openrouter.ai). 'openrouter/auto' picks the best one for your request automatically.",
@@ -178,7 +178,7 @@ export function render(state, root) {
     openrouter: "https://openrouter.ai/api/v1/chat/completions",
     copilot: "https://api.githubcopilot.com/chat/completions",
   };
-  const AI_MODELS = { opencode: "", local: "gemma4:e2b", gemini: "gemini-3.8-flash", openai: "gpt-4o", openrouter: "openrouter/auto", copilot: "gpt-4o" };
+  const AI_MODELS = { opencode: "", local: "auto", gemini: "gemini-3.8-flash", openai: "gpt-4o", openrouter: "openrouter/auto", copilot: "gpt-4o" };
   const KNOWN_DEFAULTS = Object.values(AI_MODELS);
   const setAiHint = () => {
     const sel = root.querySelector("#aiProvider");
@@ -210,10 +210,10 @@ export function render(state, root) {
     s.aiKey = root.querySelector("#aiKey").value.trim();
     saveSettings();
     const st = root.querySelector("#aiTestStatus");
-    if (!s.aiUrl) { st.textContent = "Endpoint URL is empty."; return; }
+    const prov = s.aiProvider || "openai";
+    if (!s.aiUrl && prov !== "local" && prov !== "opencode") { st.textContent = "Endpoint URL is empty."; return; }
     st.textContent = "Testing…";
     st.style.color = "var(--muted)";
-    const prov = s.aiProvider || "openai";
     try {
       let reply;
       if (prov === "local") {

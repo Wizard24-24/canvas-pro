@@ -124,7 +124,7 @@ export function render(state, root, isStale = () => false) {
           "X-AI-Token": s2.token || "",
           "X-AI-Base": s2.canvasBaseUrl || "",
           "X-AI-Ollama": s2.aiUrl || "http://localhost:11434",
-          "X-AI-Model": s2.aiModel || "gemma4:e2b",
+          "X-AI-Model": s2.aiModel || "auto",
           "X-AI-Session": state.ai.ocSession || "",
         };
         const resp = await fetch("/api/agent", {
