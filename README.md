@@ -1,81 +1,97 @@
 # Canvas Pro
 
-A grade-aware, better Canvas web app. Built to run locally (no build step) and
-deploy later to GitHub Pages / Vercel / Netlify for free.
+A smarter, grade-aware view of your Canvas classes. Runs locally on your own
+computer — your school data and token never leave your device.
 
-- **Dashboard** — every class and your current grade up front, plus "do these first."
-- **Assignments** — every assignment with type, weight, points, and due date.
-- **To-Do** — your work ranked by urgency, weight, points at stake, and how far
-  your grade is from its **GPA target** (regular = A, honors = B+, AP = B).
-- **Grades** — current grades vs targets, GPA estimate.
-- **Study Plan** — a nightly schedule that slots homework the day before it's due
-  and ramps test prep over the 3 days before each exam, scaled by difficulty.
-- **Curve Calc** — see what a curve does to your grade, and share curve history
-  to the cloud so future users know how a class has curved before.
+> New here? That's okay. Follow the **Install & Hosting Guide** first:
+> [**INSTALL.md**](INSTALL.md) walks you through Mac, Windows, and Linux step by
+> step, even if you've never used a terminal. (You can also just cleverly hit
+> the 🚀 button above, but read on.)
 
-## Run locally
+---
+
+## Quick start
 
 ```bash
-npm start        # serves on http://localhost:8000
+git clone https://github.com/Wizard24-24/canvas-pro.git
+cd canvas-pro
+npm start        # opens http://localhost:8000
 ```
 
-No install, no build, no internet required beyond Canvas + (optional) Supabase.
+Then paste your Canvas URL + a personal access token. Your token is stored only
+in your browser on this device, and only your local server ever talks to Canvas.
 
-## Connect
+---
 
-1. Open Canvas → Account → Settings → *New Access Token*.
-2. Paste it in the app with your school's Canvas URL.
-3. Your token is stored **only on this device** (your browser's localStorage) and
-   is never uploaded anywhere.
+## Everything it does
 
-> Access is Canvas-email only. The app reads the email from your Canvas profile
-> and rejects schools' personal-mail aliases unless you allowlist a domain in
-> Settings → Account access.
+**Dashboard** — every class with your current grade vs. your target, a "this
+week on Canvas" calendar of everything due in the next 7 days (click any chip to
+open it), a Tonight plan, and "do these first" — the ranked shortlist.
 
-## Cloud storage (optional, free)
+**Assignments** — every assignment in every class: type, category weight,
+points, due date, and your real grade when it's graded. Mark things done, or add
+your own assignments that stick around.
 
-Curve data can sync to a Supabase project so other students later see your
-class's curve history. Canvas tokens never go near the cloud.
+**Tests & Quizzes** — tests kept separate from homework, with study-time
+estimates so you know how much an exam is really worth.
 
-1. Create a free project at https://supabase.com.
-2. Run `supabase/schema.sql` in the SQL editor.
-3. In the app: Settings → Cloud storage → paste your project URL + anon key.
-4. Hit *Test connection*, then log curves from the Curve Calc tab.
+**To-Do** — your open work ranked by what actually moves your grade: urgency,
+weight, points at stake, and how close you are to your GPA target.
 
-Each logged curve stores: course, test, raw %, class average, curve applied,
-target %, and your canvas email (the soft identity). Tokens stay local.
+**Late Work** — scans what's overdue, applies your syllabus's late policy, and
+sorts by **grade points recovered per minute** so you do the best thing first.
 
-## Versioning
+**Grades** — current vs. target for every class, GPA estimate, and a per-course
+**what-if calculator**: type a pretend score in for any assignment and watch the
+course grade change. Grades are **weighted by category automatically** — the
+weights come straight off Canvas (assignment groups), and you can override them
+from your syllabus (paste it in **View/Edit Syllabus**, hit *Extract*).
 
-Two channels, controlled by `version.json`:
+**Study Plan** — a personal weekly schedule. Homework is placed the day before
+it's due; test prep ramps over the 3 days before each exam. It scales time by
+difficulty and learns from how long you actually spend. Every planned slot is
+clickable — it opens the assignment.
 
-- `beta`  → tests new features here (badge: BETA).
-- `main`  → stable channel (badge: STABLE).
+**Curve Calc** — see what a curve does to your grade, and (optionally) share
+curve history across students.
 
-Workflow: make changes on the `beta` branch, test locally, and merge to `main`
-when told. Each channel can be deployed to its own sub-path later.
+**AI Assistant** — ask questions in plain English: *"what's my GPA?", "what's
+due this week?", "will I pass stats?"* It can look things up in your data live.
 
-## Privacy summary
+**Documents & Announcements** — your course files and latest announcements,
+kept in the app.
+
+**Settings** — themes (dark/light, several palettes), your Canvas connection,
+what-if targets, syllabus + late-policy editors, cloud curve storage, and the
+AI provider.
+
+---
+
+## Privacy
 
 | Data | Where |
 |------|-------|
-| Canvas access token | This device only (localStorage) |
-| Canvas profile, classes, grades | This device (cached locally) |
-| Curve logs | This device + optional Supabase |
-| Supabase URL / anon key | This device only |
+| Canvas access token | This device only (your browser) |
+| Classes, grades, assignments | This device (cached locally) |
+| Curve logs | This device, + optional cloud you opt into |
+| Cloud URL and keys | This device only |
 
-## Structure
+---
 
-```
-index.html          app shell + onboarding
-css/styles.css      theme
-js/app.js           bootstrap, tabs, sync
-js/canvas.js        Canvas REST client (paged)
-js/data.js          normalize courses/assignments/todos
-js/storage.js       local settings + Supabase adapter
-js/priorities.js    the "what to do first" ranking engine
-js/schedule.js      7-day study plan generator
-js/curve.js         curve math + history rendering
-js/ui/*.js          one renderer per tab
-supabase/schema.sql cloud schema (RLS on)
-```
+## Tech & hosting
+
+Vanilla web app (no frameworks, no build step) with a tiny local Python server
+that proxies Canvas for you. That server is why it runs locally — details and
+hosting options (LAN, Raspberry Pi, VPS) are in **[INSTALL.md](INSTALL.md)**.
+
+Two version channels via `version.json`: **beta** (new features) and **main**
+(stable). See [AGENTS.md](AGENTS.md) for the repo workflow.
+
+---
+
+## Work in progress
+
+Everything lives on the `beta` branch as it's tested; a rollup moves to `main`
+when you're happy. Found a bug or want a feature? Drop it in the repo's Issues
+or tell your agent — the vault is always watching. 🚀

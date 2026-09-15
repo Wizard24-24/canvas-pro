@@ -21,7 +21,8 @@ export function render(state, root) {
   const dueWeek = open.filter((t) => { const d = dd.get(t.id); return d >= 0 && d <= 7; });
   const openByCourse = new Map();
   for (const t of open) openByCourse.set(t.courseId, (openByCourse.get(t.courseId) || 0) + 1);
-  const avgGrade = courses.filter((c) => c.currentScore != null).reduce((a, c) => a + c.currentScore, 0);
+  const graded = courses.filter((c) => c.currentScore != null);
+  const avgGrade = graded.length ? graded.reduce((a, c) => a + c.currentScore, 0) / graded.length : null;
 
 const courseCards = courses.map((c) => {
     const spread = c.currentScore != null ? pct(c.currentScore) : "—";
@@ -99,7 +100,7 @@ const courseCards = courses.map((c) => {
 
   root.innerHTML = `
     <h1>Dashboard</h1>
-    <p class="subtitle">${esc(state.profile?.name || "")} · ${avgGrade ? `avg grade <b>${(avgGrade / (courses.length || 1)).toFixed(1)}%</b>` : ""}</p>
+    <p class="subtitle">${esc(state.profile?.name || "")} ${avgGrade != null ? `· avg grade <b>${avgGrade.toFixed(1)}%</b> across ${graded.length} graded class${graded.length === 1 ? "" : "es"}` : ""}</p>
 
     <div class="grid grid-3 mt">
       <div class="card"><div class="small muted">Due today</div><div class="stat"><b>${dueToday.length}</b></div></div>

@@ -255,7 +255,13 @@ function bindOnboarding() {
       }
       note.textContent = "Server OK ✓ — contacting Canvas…";
       const ok = await connectAndLoad();
-      if (!ok) fail(lastConnectError || "Connection failed.");
+      if (!ok) {
+        fail(lastConnectError || "Connection failed.");
+        return;
+      }
+      showApp();
+      btn.disabled = false;
+      btn.textContent = "Connect to Canvas";
     } catch (e) {
       fail((e && e.message) || "Connection failed. Check DevTools console (Cmd+Option+J).");
       console.error(e);
