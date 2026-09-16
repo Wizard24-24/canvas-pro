@@ -66,6 +66,26 @@ function windowMinutes(start, end) {
   return e > s ? e - s : (24 * 60 - s) + e;
 }
 
+// Same-day clock segments for a study window. A midnight-crossing window
+// (e.g. 22:00–01:00) is a single block that is available from 22:00 to 24:00 and
+// again from 00:00 to 01:00 on the same calendar day.
+function windowSegments(start, end) {
+  const s = minute(start);
+  const e = minute(end);
+  if (e > s) return [{ startM: s, endM: e }];
+  return [
+    { startM: s, endM: 1440 },
+    { startM: 0, endM: e },
+  ];
+}
+
+// Every same-day window segment, sorted by start time, for the final placement.
+function allSegments(slots) {
+  return slots
+    .flatMap((s, i) => windowSegments(s.start, s.end).map((seg) => ({ ...seg, label: s.label || `Block ${i + 1}` })))
+    .sort((a, b) => a.startM - b.startM);
+}
+
 function fmtClock(min) {
   const h = Math.floor(min / 60);
   const m = min % 60;
@@ -80,31 +100,16 @@ function breakConfig(c = settings()) {
   return { every, len, on: every > 0 && len > 0 };
 }
 
-function hasStudyTimeOnDay(days, idx) {
-  return days[idx] && days[idx].available > 0;
-}
-
-function latestStudyWindowBeforeDue(dueIdx, dueMinutesFromMidnight, slots, days) {
-  const day = days[dueIdx];
-  if (!day) return null;
-  for (const s of slots) {
-    const startM = minute(s.start);
-    const endM = minute(s.end);
-    const windowEndsAt = endM > startM ? endM : (24 * 60 - startM) + endM;
-    if (windowEndsAt <= dueMinutesFromMidnight) {
-      return { startM, endM };
+// True if the due time leaves enough room for at least one whole same-day study
+// segment to finish before it (i.e. the work can legitimately be done that day).
+function windowEndsBeforeDue(slots, dueMins) {
+  if (dueMins == null) return false;
+  for (const slot of slots) {
+    for (const seg of windowSegments(slot.start, slot.end)) {
+      if (seg.endM <= dueMins) return true;
     }
   }
-  return null;
-}
-
-function findStudySlotForDue(rankedItem, dueIdx, slots, days) {
-  const task = rankedItem.task;
-  const dueMins = dueTimeOfDay(task.dueAt);
-  if (dueMins == null) return dueIdx - 1;
-  const window = latestStudyWindowBeforeDue(dueIdx, dueMins, slots, days);
-  if (window) return dueIdx;
-  return dueIdx - 1;
+  return false;
 }
 
 export function generateSchedule(courses, tasks) {
@@ -143,102 +148,92 @@ export function generateSchedule(courses, tasks) {
   const exams = ranked.filter((r) => r.task.type === "exam");
   const others = ranked.filter((r) => r.task.type !== "exam");
 
-  function placeOnDay(idx, item, placeAtStart) {
+  function pushEntry(idx, entry, mins) {
     const d = days[idx];
-    if (!d || d.remaining < 10) return false;
-    const mins = targetMinutes(item.task, byCourse);
     const take = Math.min(d.remaining, mins);
-    const entry = {
-      kind: item.task.type === "exam" ? "study" : "homework",
-      what: item.task.courseName ? `${item.task.courseName} — ${item.task.title}` : item.task.title,
-      courseId: item.task.courseId,
-      taskId: item.task.id,
-      mins: take,
-      priority: item.score,
-      labels: item.task.type === "exam" ? "Test prep" : item.task.type === "quiz" ? "Quiz: " + item.task.title : "HW: " + item.task.title,
-    };
-    if (placeAtStart) d.slots.unshift(entry); else d.slots.push(entry);
+    if (take < 10) return 0;
+    d.slots.push({ ...entry, mins: take });
     d.remaining -= take;
-    return take >= mins - 1;
+    return take;
   }
 
-  function findStudySlotForDue(rankedItem, dueIdx) {
-    const task = rankedItem.task;
-    const dueMins = dueTimeOfDay(task.dueAt);
-    if (dueMins == null) return dueIdx - 1;
-    const day = days[dueIdx];
-    if (!day || day.available === 0) return dueIdx - 1;
-    for (const s of slots) {
-      const startM = minute(s.start);
-      const endM = minute(s.end);
-      const windowEndsAt = endM > startM ? endM : (24 * 60 - startM) + endM;
-      if (windowEndsAt <= dueMins) {
-        return dueIdx;
-      }
-    }
-    return dueIdx - 1;
-  }
+  const homeworkEntry = (r) => ({
+    kind: "homework",
+    what: r.task.courseName ? `${r.task.courseName} — ${r.task.title}` : r.task.title,
+    courseId: r.task.courseId,
+    taskId: r.task.id,
+    priority: r.score,
+    labels: r.task.type === "quiz" ? "Quiz: " + r.task.title : "HW: " + r.task.title,
+  });
 
+  const studyEntry = (r) => ({
+    kind: "study",
+    what: r.task.courseName ? `${r.task.courseName} — ${r.task.title}` : r.task.title,
+    courseId: r.task.courseId,
+    taskId: r.task.id,
+    priority: r.score,
+    labels: "Test prep",
+  });
+
+  // ---- Homework: due day only if a study segment on that day ends before the
+  // due time, otherwise the day before. Spill over into earlier days if the full
+  // estimate doesn't fit.
   for (const r of others) {
     if (!r.task.dueAt) continue;
     const dueIdx = Math.min(HORIZON - 1, Math.max(0, daysUntil(r.task.dueAt)));
-    const target = findStudySlotForDue(r, dueIdx);
-    const actualTarget = Math.max(0, Math.min(target, dueIdx));
-    let placed = placeOnDay(actualTarget, r, false);
-    if (!placed) {
-      for (let i = actualTarget - 1; i >= 0; i--) {
-        if (placeOnDay(i, r, false)) break;
-      }
+    const dueMins = dueTimeOfDay(r.task.dueAt);
+    const target = windowEndsBeforeDue(slots, dueMins) ? dueIdx : dueIdx - 1;
+    const startDay = Math.max(0, Math.min(target, HORIZON - 1));
+    const need = targetMinutes(r.task, byCourse);
+    let placed = 0;
+    for (let i = startDay; i >= 0 && placed < need; i--) {
+      const took = pushEntry(i, homeworkEntry(r), need - placed);
+      if (!took) continue;
+      placed += took;
     }
   }
 
+  // ---- Exams: ramp up over the 3 days before the exam. A day only participates
+  // if it has study time; the exam day itself only if a segment ends before the
+  // exam time. Shares of skipped days are folded into the remaining days, never
+  // later than the exam.
   for (const r of exams) {
     const dueIdx = Math.min(HORIZON - 1, Math.max(0, daysUntil(r.task.dueAt)));
+    const dueMins = dueTimeOfDay(r.task.dueAt);
     const startIdx = Math.max(0, dueIdx - 3);
-    const range = [];
-    for (let i = startIdx; i <= Math.min(dueIdx, HORIZON - 1); i++) range.push(i);
-    const weights = range.map((i, k) => (k === range.length - 1 && i === dueIdx ? 0.5 : 1 + k));
+    const usable = [];
+    for (let i = startIdx; i <= dueIdx; i++) {
+      if (i === dueIdx && !windowEndsBeforeDue(slots, dueMins)) continue;
+      if (!days[i] || days[i].available <= 0) continue;
+      usable.push(i);
+    }
+    if (!usable.length) continue;
+    const weights = usable.map((i) => (i === dueIdx ? 0.5 : 1 + (i - startIdx)));
     const wsum = weights.reduce((a, b) => a + b, 0);
     const study = targetMinutes(r.task, byCourse);
-    for (let k = 0; k < range.length; k++) {
-      const idx = range[k];
-      if (!days[idx] || days[idx].remaining < 10) continue;
+    for (let k = 0; k < usable.length; k++) {
       const minutes = Math.round((study * weights[k]) / wsum);
-      if (minutes < 10) continue;
-      const d = days[idx];
-      const take = Math.min(d.remaining, minutes);
-      d.slots.push({
-        kind: "study",
-        what: `${r.task.courseName} — ${r.task.title}`,
-        courseId: r.task.courseId,
-        taskId: r.task.id,
-        mins: take,
-        priority: r.score,
-        labels: "Test prep",
-      });
-      d.remaining -= take;
+      pushEntry(usable[k], studyEntry(r), minutes);
     }
   }
 
+  // ---- Fill each day's slots into its clock windows (breaks interleaved).
+  const windows = allSegments(slots);
   for (const d of days) {
     d.slots.sort((a, b) => b.priority - a.priority);
 
-    const windows = slots
-      .map((s, i) => ({ ...s, startM: minute(s.start), endM: minute(s.end), label: s.label || `Block ${i + 1}` }))
-      .sort((a, b) => a.startM - b.startM);
-
-    let cursor = 0;
-    let inWindow = false;
-    let currentStart = 0;
-    let sinceBreak = 0;
     const placed = [];
-    for (const slot of d.slots) {
-      while (cursor < windows.length && slot.mins > 0) {
+    let cursor = 0;
+    let pos = 0;
+    let sinceBreak = 0;
+
+    for (const item of d.slots) {
+      let need = item.mins;
+      while (need > 0 && cursor < windows.length) {
         const w = windows[cursor];
-        if (!inWindow) { inWindow = true; currentStart = w.startM; }
-        const windowEndM = w.endM > w.startM ? w.endM : (24 * 60 - w.startM) + w.endM;
-        const free = windowEndM - currentStart;
-        if (free <= 0) { cursor++; inWindow = false; currentStart = 0; continue; }
+        if (pos < w.startM) pos = w.startM;
+        const free = w.endM - pos;
+        if (free <= 0) { cursor++; pos = 0; sinceBreak = 0; continue; }
 
         if (on && sinceBreak >= every && free >= len) {
           placed.push({
@@ -247,25 +242,25 @@ export function generateSchedule(courses, tasks) {
             labels: "Step away, stretch, water",
             mins: len,
             priority: -1,
-            start: fmtClock(currentStart),
-            end: fmtClock(currentStart + len),
+            start: fmtClock(pos),
+            end: fmtClock(pos + len),
           });
-          currentStart += len;
+          pos += len;
           sinceBreak = 0;
           continue;
         }
 
-        const take = Math.min(slot.mins, free);
-        placed.push({ ...slot, mins: take, start: fmtClock(currentStart), end: fmtClock(currentStart + take) });
-        currentStart += take;
-        slot.mins -= take;
+        const take = Math.min(need, free);
+        placed.push({ ...item, mins: take, start: fmtClock(pos), end: fmtClock(pos + take) });
+        pos += take;
+        need -= take;
         sinceBreak += take;
-        if (currentStart >= windowEndM) { cursor++; inWindow = false; currentStart = 0; }
+        if (pos >= w.endM) { cursor++; pos = 0; sinceBreak = 0; }
       }
     }
+
     d.slots = placed;
-    const total = placed.reduce((a, s) => a + s.mins, 0);
-    d.used = total;
+    d.used = placed.reduce((a, s) => a + s.mins, 0);
   }
 
   return { days, today };

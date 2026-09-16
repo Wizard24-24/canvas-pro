@@ -461,6 +461,28 @@ h2 { font-size: 17px; margin-bottom: 12px; }
 .btn-ghost { background: transparent; }
 .btn-small { padding: 6px 13px; font-size: 12px; border-radius: 9px; }
 
+/* ---------- Study integration buttons ---------- */
+.integration-buttons { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+.int-btn {
+  display: inline-flex; align-items: center; gap: 9px;
+  padding: 10px 15px; border-radius: 12px; text-decoration: none;
+  border: 1px solid var(--border); background: var(--card-2); color: var(--text);
+  font-size: 13.5px; font-weight: 600; line-height: 1;
+  transition: transform .08s ease, filter .15s, border-color .15s;
+}
+.int-btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
+.int-btn:active { transform: scale(.97); }
+.int-btn svg { flex: none; }
+.int-btn.ap     { border-color: color-mix(in srgb, #6f5bd4 45%, var(--border)); color: #b7a8ff; }
+.int-btn.ap:hover { background: color-mix(in srgb, #6f5bd4 12%, transparent); }
+.int-btn.khan   { border-color: color-mix(in srgb, #14bf96 45%, var(--border)); color: #3fd6b2; }
+.int-btn.khan:hover { background: color-mix(in srgb, #14bf96 12%, transparent); }
+.int-btn.google { border-color: color-mix(in srgb, #4285f4 45%, var(--border)); color: #7ba9f7; }
+.int-btn.google:hover { background: color-mix(in srgb, #4285f4 12%, transparent); }
+html[data-theme="cream"] .int-btn,
+html[data-theme="cream-dark"] .int-btn,
+html[data-theme="earthy-light"] .int-btn { color: var(--text); }
+
 /* ---------- Checkboxes (the pretty ones) ---------- */
 input[type=checkbox].done-box,
 input[type=checkbox].todo-done {

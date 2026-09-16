@@ -39,8 +39,11 @@ export function fmtDate(iso) {
 
 export function daysUntil(iso) {
   if (!iso) return null;
-  const ms = new Date(iso) - new Date();
-  return Math.ceil(ms / 86400000);
+  const d = new Date(iso);
+  const dueMid = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const now = new Date();
+  const todayMid = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  return Math.round((dueMid - todayMid) / 86400000);
 }
 
 export function minutesUntil(iso) {

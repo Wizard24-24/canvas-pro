@@ -1,4 +1,4 @@
-import { esc, toast, daysUntil } from "../utils.js";
+import { esc, toast, daysUntil, isOverdue } from "../utils.js";
 import { settings, saveSettings, doneIds, setDone, markAllDone, clearDone } from "../storage.js";
 import { rowHTML } from "./_rows.js";
 import { openTask } from "./taskdetail.js";
@@ -42,7 +42,7 @@ export function render(state, root) {
       if (hide.checked && t.submitted) return false;
       return true;
     };
-    const isLate = (t) => t.dueAt && (daysUntil(t.dueAt) ?? 1) < 0 && !t.submitted && !done.has(t.id);
+    const isLate = (t) => isOverdue(t.dueAt) && !t.submitted && !done.has(t.id);
     const lateSet = new Set(work.filter(isLate).map((t) => t.id));
 
     const lateItems = work.filter((t) => lateSet.has(t.id) && passes(t)).sort(byDue);

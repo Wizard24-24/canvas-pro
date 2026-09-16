@@ -53,7 +53,7 @@ export function render(state, root) {
 
   root.innerHTML = `
     <h1>Study Plan</h1>
-    <p class="subtitle">Homework is slotted the day before it's due; test prep ramps up over the 3 days before an exam. Time scales with points, weight, and difficulty.</p>
+    <p class="subtitle">Homework is slotted on the due day when your study window fits before the due time, otherwise the day before. Test prep ramps up over the 3 days before an exam (skipping days with no study time, and the exam day itself if your window is after the exam).</p>
 
     <div class="grid grid-3 mt">
       <div class="card"><div class="small muted">Planned this week</div><div class="stat"><b>${Math.round(sum.totalMins / 60 * 10) / 10} h</b></div></div>
