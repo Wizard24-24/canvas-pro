@@ -43,6 +43,22 @@ export function daysUntil(iso) {
   return Math.ceil(ms / 86400000);
 }
 
+export function minutesUntil(iso) {
+  if (!iso) return null;
+  return Math.round((new Date(iso) - new Date()) / 60000);
+}
+
+export function isOverdue(iso) {
+  if (!iso) return false;
+  return new Date(iso) < new Date();
+}
+
+export function dueTimeOfDay(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return d.getHours() * 60 + d.getMinutes();
+}
+
 export function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
 
 export function toast(msg, kind = "") {

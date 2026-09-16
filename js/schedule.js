@@ -1,6 +1,6 @@
 import { settings, timeLogs, doneIds } from "./storage.js";
 import { recommendedOrder } from "./priorities.js";
-import { clamp, daysUntil } from "./utils.js";
+import { clamp, daysUntil, dueTimeOfDay } from "./utils.js";
 
 const HORIZON = 7;
 
@@ -11,7 +11,6 @@ function difficultyFactor(task) {
   return s.difficulty[task.type] ?? 1.4;
 }
 
-// Base estimate, before any adaptive learning kicks in.
 export function rawEstimate(task) {
   const base = task.baseMinutes || (task.pointsPossible || 0) * settings().baseMinutesPerPoint || 20;
   const factor = difficultyFactor(task);
@@ -22,7 +21,6 @@ export function rawEstimate(task) {
   return mins;
 }
 
-// Aggregates logged effort per course: sum(actual) / sum(estimated-at-log-time).
 function learnedMap(tasks) {
   const logs = timeLogs();
   const map = new Map();
@@ -40,7 +38,6 @@ function learnedMap(tasks) {
   return map;
 }
 
-// Public summary for the UI (Study Plan, task detail).
 export function courseFactors(tasks) {
   const out = {};
   for (const [courseId, agg] of learnedMap(tasks)) {
@@ -63,6 +60,12 @@ function minute(str) {
   return h * 60 + (m || 0);
 }
 
+function windowMinutes(start, end) {
+  const s = minute(start);
+  const e = minute(end);
+  return e > s ? e - s : (24 * 60 - s) + e;
+}
+
 function fmtClock(min) {
   const h = Math.floor(min / 60);
   const m = min % 60;
@@ -77,6 +80,33 @@ function breakConfig(c = settings()) {
   return { every, len, on: every > 0 && len > 0 };
 }
 
+function hasStudyTimeOnDay(days, idx) {
+  return days[idx] && days[idx].available > 0;
+}
+
+function latestStudyWindowBeforeDue(dueIdx, dueMinutesFromMidnight, slots, days) {
+  const day = days[dueIdx];
+  if (!day) return null;
+  for (const s of slots) {
+    const startM = minute(s.start);
+    const endM = minute(s.end);
+    const windowEndsAt = endM > startM ? endM : (24 * 60 - startM) + endM;
+    if (windowEndsAt <= dueMinutesFromMidnight) {
+      return { startM, endM };
+    }
+  }
+  return null;
+}
+
+function findStudySlotForDue(rankedItem, dueIdx, slots, days) {
+  const task = rankedItem.task;
+  const dueMins = dueTimeOfDay(task.dueAt);
+  if (dueMins == null) return dueIdx - 1;
+  const window = latestStudyWindowBeforeDue(dueIdx, dueMins, slots, days);
+  if (window) return dueIdx;
+  return dueIdx - 1;
+}
+
 export function generateSchedule(courses, tasks) {
   const conf = settings();
   const slots = conf.studySlots.length ? conf.studySlots : [{ start: "18:00", end: "21:00", label: "Evening" }];
@@ -86,8 +116,6 @@ export function generateSchedule(courses, tasks) {
 
   const { every, len, on } = breakConfig(conf);
 
-  // Reserve room inside each day's window for breaks: in a 3h block with a
-  // 50+10 rhythm, only ~150 min are actually study time.
   const studyCap = (a) => (on ? Math.max(10, a - Math.floor(a / (every + len)) * len) : a);
 
   const days = Array.from({ length: HORIZON }, (_, i) => {
@@ -95,7 +123,7 @@ export function generateSchedule(courses, tasks) {
     date.setDate(today.getDate() + i);
     const avail = Math.min(
       conf.maxStudyMinutesPerDay,
-      slots.reduce((sum, s) => sum + Math.max(0, minute(s.end) - minute(s.start)), 0),
+      slots.reduce((sum, s) => sum + windowMinutes(s.start, s.end), 0),
     );
     return {
       index: i,
@@ -107,8 +135,6 @@ export function generateSchedule(courses, tasks) {
     };
   });
 
-  // Never schedule work the student marked done (locally or submitted on
-  // Canvas), regardless of which caller passes what.
   const done = new Set(doneIds());
   const open = tasks.filter((t) => !t.submitted && !done.has(t.id) && daysUntil(t.dueAt) < 30 && t.dueAt);
   const ranked = recommendedOrder(open, courses);
@@ -119,7 +145,7 @@ export function generateSchedule(courses, tasks) {
 
   function placeOnDay(idx, item, placeAtStart) {
     const d = days[idx];
-    if (d.remaining < 10) return false;
+    if (!d || d.remaining < 10) return false;
     const mins = targetMinutes(item.task, byCourse);
     const take = Math.min(d.remaining, mins);
     const entry = {
@@ -133,29 +159,39 @@ export function generateSchedule(courses, tasks) {
     };
     if (placeAtStart) d.slots.unshift(entry); else d.slots.push(entry);
     d.remaining -= take;
-    return take >= mins - 1; // fully placed?
+    return take >= mins - 1;
   }
 
-  // Homework: day before due, rolling backward onto earlier days if needed.
+  function findStudySlotForDue(rankedItem, dueIdx) {
+    const task = rankedItem.task;
+    const dueMins = dueTimeOfDay(task.dueAt);
+    if (dueMins == null) return dueIdx - 1;
+    const day = days[dueIdx];
+    if (!day || day.available === 0) return dueIdx - 1;
+    for (const s of slots) {
+      const startM = minute(s.start);
+      const endM = minute(s.end);
+      const windowEndsAt = endM > startM ? endM : (24 * 60 - startM) + endM;
+      if (windowEndsAt <= dueMins) {
+        return dueIdx;
+      }
+    }
+    return dueIdx - 1;
+  }
+
   for (const r of others) {
     if (!r.task.dueAt) continue;
     const dueIdx = Math.min(HORIZON - 1, Math.max(0, daysUntil(r.task.dueAt)));
-    let target = Math.max(0, dueIdx - 1);
-    while (target >= 0) {
-      if (days[target].remaining >= 10) break;
-      target--;
-    }
-    if (target < 0) target = Math.max(0, dueIdx - 1);
-    let placed = placeOnDay(target, r, false);
-    // spill extra onto adjacent earlier days
+    const target = findStudySlotForDue(r, dueIdx);
+    const actualTarget = Math.max(0, Math.min(target, dueIdx));
+    let placed = placeOnDay(actualTarget, r, false);
     if (!placed) {
-      for (let i = target - 1; i >= 0; i--) {
+      for (let i = actualTarget - 1; i >= 0; i--) {
         if (placeOnDay(i, r, false)) break;
       }
     }
   }
 
-  // Exams: weighted prep in the 3 days before the exam.
   for (const r of exams) {
     const dueIdx = Math.min(HORIZON - 1, Math.max(0, daysUntil(r.task.dueAt)));
     const startIdx = Math.max(0, dueIdx - 3);
@@ -184,7 +220,6 @@ export function generateSchedule(courses, tasks) {
     }
   }
 
-  // Order slots within each day by priority, then stamp times from the windows.
   for (const d of days) {
     d.slots.sort((a, b) => b.priority - a.priority);
 
@@ -201,10 +236,10 @@ export function generateSchedule(courses, tasks) {
       while (cursor < windows.length && slot.mins > 0) {
         const w = windows[cursor];
         if (!inWindow) { inWindow = true; currentStart = w.startM; }
-        const free = w.endM - currentStart;
+        const windowEndM = w.endM > w.startM ? w.endM : (24 * 60 - w.startM) + w.endM;
+        const free = windowEndM - currentStart;
         if (free <= 0) { cursor++; inWindow = false; currentStart = 0; continue; }
 
-        // Time for a break? Insert one before continuing to study.
         if (on && sinceBreak >= every && free >= len) {
           placed.push({
             kind: "break",
@@ -225,7 +260,7 @@ export function generateSchedule(courses, tasks) {
         currentStart += take;
         slot.mins -= take;
         sinceBreak += take;
-        if (currentStart >= w.endM) { cursor++; inWindow = false; currentStart = 0; }
+        if (currentStart >= windowEndM) { cursor++; inWindow = false; currentStart = 0; }
       }
     }
     d.slots = placed;
